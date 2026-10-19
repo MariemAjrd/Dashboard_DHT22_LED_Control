@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32 - IoT Dashboard</title>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --paper: #fff8e7;
+      --ink: #14120f;
+      --pink: #ff7eb6;
+      --yellow: #ffd23f;
+      --blue: #5ec8ff;
+      --green: #7be495;
+      --orange: #ff8a3d;
+      --red: #ff4d4d;
+      --shadow: 6px 6px 0 var(--ink);
+      --border: 3px solid var(--ink);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Space Mono", monospace;
+      color: var(--ink);
+      min-height: 100vh;
+      background-color: var(--paper);
+      background-image: radial-gradient(#14120f22 1.5px, transparent 1.5px);
+      background-size: 22px 22px;
+      padding-bottom: 20px;
+    }
+
+    /* ---------- Header ---------- */
+    header {
+      width: min(1080px, 92%);
+      margin: 0 auto;
+      padding: 40px 0 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      font-family: "Archivo Black", sans-serif;
+      font-size: clamp(30px, 5vw, 52px);
+      line-height: 1;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+    }
+
+    header h1 span {
+      background: var(--yellow);
+      padding: 0 10px;
+      border: var(--border);
+      box-shadow: 4px 4px 0 var(--ink);
+      display: inline-block;
+      transform: rotate(-2deg);
+      margin-left: 4px;
+    }
+
+    header p, .subtitle {
+      margin-top: 16px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .connection {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px;
+      background: #fff;
+      border: var(--border);
+      box-shadow: 4px 4px 0 var(--ink);
+      font-size: 13px; font-weight: 700;
+      transform: rotate(2deg);
+    }
+
+    .dot {
+      width: 14px; height: 14px;
+      background: var(--yellow);
+      border: 2px solid var(--ink);
+      border-radius: 50%;
+    }
+
+    /* ---------- Layout ---------- */
+    main { width: min(1080px, 92%); margin: 30px auto 10px; }
+
+    .section-title {
+      display: inline-block;
+      font-family: "Archivo Black", sans-serif;
+      font-size: 18px;
+      text-transform: uppercase;
+      background: var(--ink);
+      color: var(--paper);
+      padding: 7px 16px;
+      margin-bottom: 22px;
+      transform: rotate(-1deg);
+    }
+
+    .sensor-grid, .led-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 28px;
+    }
+
+    .card {
+      background: #fff;
+      border: var(--border);
+      box-shadow: var(--shadow);
+      border-radius: 20px;
+      padding: 26px;
+    }
+
+    /* ---------- Capteurs ---------- */
+    .sensor-card.temp { background: var(--orange); }
+    .sensor-card.hum  { background: var(--blue); }
+
+    .sensor-name {
+      display: inline-block;
+      font-family: "Archivo Black", sans-serif;
+      font-size: 15px;
+      text-transform: uppercase;
+      background: #fff;
+      border: var(--border);
+      padding: 5px 12px;
+      border-radius: 999px;
+      margin-bottom: 20px;
+    }
+
+    .gauge {
+      --angle: 0deg;
+      --percent: 0;
+      --gauge-color: var(--orange);
+      position: relative;
+      margin: 0 auto 18px;
+    }
+
+    /* Thermomètre */
+    .gauge.thermo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 28px;
+      height: 230px;
+    }
+
+    .gauge.thermo::before {
+      content: "";
+      width: 54px; height: 100%;
+      border: var(--border);
+      border-radius: 27px 27px 0 0;
+      background:
+        linear-gradient(to top, var(--red) calc(var(--percent) * 1%), #fff calc(var(--percent) * 1%));
+      box-shadow: 4px 4px 0 var(--ink);
+      transition: background .4s;
+    }
+
+    .gauge.thermo .gauge-content { text-align: left; }
+
+    /* Réservoir d'eau */
+    .gauge.tank {
+      width: 220px; height: 220px;
+      border: var(--border);
+      border-radius: 50%;
+      background: #fff;
+      overflow: hidden;
+      box-shadow: 4px 4px 0 var(--ink);
+      display: grid; place-items: center;
+    }
+
+    .gauge.tank::before {
+      content: "";
+      position: absolute;
+      left: -50%; width: 200%;
+      bottom: 0;
+      height: calc(var(--percent) * 1% + 14px);
+      max-height: 110%;
+      background: #2d9cdb;
+      border-radius: 45% 45% 0 0 / 14px 14px 0 0;
+      animation: wave 4s ease-in-out infinite alternate;
+      transition: height .6s;
+    }
+
+    @keyframes wave {
+      from { transform: translateX(-6%); }
+      to   { transform: translateX(6%); }
+    }
+
+    .gauge.tank .gauge-content {
+      position: relative;
+      z-index: 2;
+      text-align: center;
+    }
+
+    .gauge-value {
+      font-family: "Archivo Black", sans-serif;
+      font-size: 50px;
+      line-height: 1;
+      letter-spacing: -0.03em;
+      text-shadow: 3px 3px 0 #fff;
+    }
+
+    .gauge-unit {
+      margin-top: 6px;
+      font-size: 14px;
+      font-weight: 700;
+      display: inline-block;
+      background: var(--ink);
+      color: #fff;
+      padding: 2px 10px;
+      border-radius: 999px;
+    }
+
+    .sensor-footer {
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    /* ---------- LED ---------- */
+    .led-section { margin-top: 44px; }
+
+    .led-grid .card:nth-child(1) { background: var(--pink); transform: rotate(-.6deg); }
+    .led-grid .card:nth-child(2) { background: var(--green); transform: rotate(.6deg); }
+
+    .led-card { display: flex; align-items: center; gap: 18px; }
+
+    .bulb {
+      width: 76px; height: 76px;
+      flex-shrink: 0;
+      border: var(--border);
+      border-radius: 50%;
+      background: #fff;
+      display: grid; place-items: center;
+      font-size: 38px;
+      filter: grayscale(1);
+      box-shadow: 4px 4px 0 var(--ink);
+      transition: all .25s;
+    }
+
+    .bulb.on {
+      background: var(--yellow);
+      filter: none;
+      transform: rotate(-8deg) scale(1.08);
+      box-shadow: 4px 4px 0 var(--ink), 0 0 0 8px #ffd23f66, 0 0 40px #ffd23f;
+    }
+
+    .led-info { flex: 1; }
+
+    .led-info h3 {
+      font-family: "Archivo Black", sans-serif;
+      font-size: 24px;
+      text-transform: uppercase;
+    }
+
+    .led-info p { font-size: 12px; font-weight: 700; margin-top: 4px; }
+
+    .status {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 3px 10px;
+      font-size: 12px; font-weight: 700;
+      text-transform: uppercase;
+      background: #fff;
+      color: var(--red);
+      border: 2px solid var(--ink);
+      transform: rotate(-3deg);
+    }
+    .status.on { color: #0b7a2e; background: var(--yellow); }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 24px;
+    }
+
+    button {
+      font-family: "Archivo Black", sans-serif;
+      font-size: 14px;
+      text-transform: uppercase;
+      color: var(--ink);
+      padding: 13px 16px;
+      border: var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: 4px 4px 0 var(--ink);
+      transition: transform .1s, box-shadow .1s;
+    }
+
+    button:disabled { opacity: .55; cursor: wait; }
+
+    .btn-on  { background: var(--yellow); }
+    .btn-off { background: #fff; }
+
+    button:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 6px 6px 0 var(--ink); }
+    button:active:not(:disabled) { transform: translate(4px, 4px); box-shadow: 0 0 0 var(--ink); }
+
+    /* ---------- Message ---------- */
+    #message {
+      margin-top: 36px;
+      padding: 14px 18px;
+      background: var(--ink);
+      color: var(--paper);
+      border-radius: 14px;
+      font-size: 13px; line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+    #message::before { content: "> "; color: var(--green); font-weight: 700; }
+
+    footer {
+      text-align: center;
+      font-size: 12px; font-weight: 700;
+      padding: 26px;
+    }
+
+    @media (max-width: 700px) {
+      .sensor-grid, .led-grid { grid-template-columns: 1fr; }
+      .led-grid .card { transform: none !important; }
+      .gauge.tank { width: 190px; height: 190px; }
+      .gauge-value { font-size: 42px; }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div>
+      <h1>ESP32 <span>IoT</span> Dashboard</h1>
+      <p>Surveillance de température, humidité et éclairage</p>
+    </div>
+
+    <div class="connection">
+      <span class="dot" id="connectionDot"></span>
+      <span id="connectionText">Connexion à Firebase...</span>
+    </div>
+  </header>
+
+  <main>
+    <h2 class="section-title">Mesures environnementales</h2>
+
+    <div class="sensor-grid">
+      <section class="card sensor-card temp">
+        <div class="sensor-name">🌡️ Température</div>
+
+        <div class="gauge thermo"
+             id="temperatureGauge"
+             style="--gauge-color:#ff4d4d">
+          <div class="gauge-content">
+            <div class="gauge-value" id="temperatureValue">--.-</div>
+            <div class="gauge-unit">°C</div>
+          </div>
+        </div>
+
+        <p class="sensor-footer">Capteur DHT22 · Plage visuelle 0–50 °C</p>
+      </section>
+
+      <section class="card sensor-card hum">
+        <div class="sensor-name">💧 Humidité</div>
+
+        <div class="gauge tank"
+             id="humidityGauge"
+             style="--gauge-color:#2d9cdb">
+          <div class="gauge-content">
+            <div class="gauge-value" id="humidityValue">--</div>
+            <div class="gauge-unit">%</div>
+          </div>
+        </div>
+
+        <p class="sensor-footer">Capteur DHT22 · Plage 0–100 %</p>
+      </section>
+    </div>
+
+    <section class="led-section">
+      <h2 class="section-title">Contrôle des LED</h2>
+
+      <div class="led-grid">
+        <div class="card">
+          <div class="led-card">
+            <div class="bulb" id="bulb1">💡</div>
+            <div class="led-info">
+              <h3>LED 1</h3>
+              <p>ESP32 · GPIO 23</p>
+              <span class="status" id="status1">Éteinte</span>
+            </div>
+          </div>
+
+          <div class="buttons">
+            <button class="btn-on" id="led1On"
+                    onclick="setLed(1, true)">Allumer</button>
+            <button class="btn-off" id="led1Off"
+                    onclick="setLed(1, false)">Éteindre</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="led-card">
+            <div class="bulb" id="bulb2">💡</div>
+            <div class="led-info">
+              <h3>LED 2</h3>
+              <p>ESP32 · GPIO 12</p>
+              <span class="status" id="status2">Éteinte</span>
+            </div>
+          </div>
+
+          <div class="buttons">
+            <button class="btn-on" id="led2On"
+                    onclick="setLed(2, true)">Allumer</button>
+            <button class="btn-off" id="led2Off"
+                    onclick="setLed(2, false)">Éteindre</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div id="message" role="status">
+      En attente des données Firebase...
+    </div>
+  </main>
+
+  <footer>
+    ESP32 · DHT22 · Firebase Realtime Database
+  </footer>
+
+  <script>
+    // ===== 1. CONFIGURATION FIREBASE =====
+    const firebaseConfig = {
+      apiKey: "AIzaSyDpUQOsPfSHpevX9Vys6csO-9eegw34qJQ",
+      authDomain: "controle-leds-38a1d.firebaseapp.com",
+      databaseURL:
+        "https://controle-leds-38a1d-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "controle-leds-38a1d"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const message = document.getElementById("message");
+
+    // ===== 2. ETAT DE LA CONNEXION =====
+    db.ref(".info/connected").on("value", snapshot => {
+      const connected = snapshot.val() === true;
+
+      document.getElementById("connectionText").textContent =
+        connected ? "Connecté à Firebase" : "Déconnecté";
+
+      document.getElementById("connectionDot").style.background =
+        connected ? "#7be495" : "#ff4d4d";
+    });
+
+    // ===== 3. MISE A JOUR DES JAUGES =====
+    function updateGauge(elementId, value, min, max) {
+      const gauge = document.getElementById(elementId);
+      const percentage = Math.max(
+        0, Math.min(100, ((value - min) / (max - min)) * 100)
+      );
+
+      gauge.style.setProperty("--angle", (percentage * 3.6) + "deg");
+      gauge.style.setProperty("--percent", percentage);
+    }
+
+    db.ref("Sensors").on("value", snapshot => {
+      const sensors = snapshot.val();
+
+      if (!sensors) {
+        message.textContent =
+          "Aucune mesure reçue. Vérifie que l'ESP32 envoie les données à /Sensors.";
+        return;
+      }
+
+      const temperature = Number(sensors.Temperature);
+      const humidity = Number(sensors.Humidity);
+
+      if (Number.isFinite(temperature)) {
+        document.getElementById("temperatureValue").textContent =
+          temperature.toFixed(1);
+
+        updateGauge("temperatureGauge", temperature, 0, 50);
+      }
+
+      if (Number.isFinite(humidity)) {
+        document.getElementById("humidityValue").textContent =
+          humidity.toFixed(1);
+
+        updateGauge("humidityGauge", humidity, 0, 100);
+      }
+
+      message.textContent =
+        "Mesures actualisées en temps réel depuis Firebase.";
+    }, error => {
+      message.textContent =
+        "Erreur de lecture des capteurs : " + error.message;
+    });
+
+    // ===== 4. AFFICHER L'ETAT DES LED =====
+    function updateLedDisplay(number, state) {
+      const status = document.getElementById("status" + number);
+      const bulb = document.getElementById("bulb" + number);
+
+      status.textContent = state ? "Allumée" : "Éteinte";
+      status.classList.toggle("on", state);
+      bulb.classList.toggle("on", state);
+    }
+
+    db.ref("Led_1").on("value", snapshot => {
+      if (typeof snapshot.val() === "boolean") {
+        updateLedDisplay(1, snapshot.val());
+      }
+    }, error => {
+      message.textContent = "Lecture LED 1 impossible : " + error.message;
+    });
+
+    db.ref("Led_2").on("value", snapshot => {
+      if (typeof snapshot.val() === "boolean") {
+        updateLedDisplay(2, snapshot.val());
+      }
+    }, error => {
+      message.textContent = "Lecture LED 2 impossible : " + error.message;
+    });
+
+    // ===== 5. COMMANDER LES LED =====
+    async function setLed(number, state) {
+      const buttonIds = [
+        "led" + number + "On",
+        "led" + number + "Off"
+      ];
+
+      buttonIds.forEach(id => {
+        document.getElementById(id).disabled = true;
+      });
+
+      try {
+        await db.ref("Led_" + number).set(state);
+
+        message.textContent =
+          "Commande envoyée : LED " + number +
+          (state ? " allumée." : " éteinte.") +
+          " En attente de confirmation de l'ESP32.";
+      } catch (error) {
+        message.textContent =
+          "Erreur de commande LED " + number + " : " + error.message;
+      } finally {
+        buttonIds.forEach(id => {
+          document.getElementById(id).disabled = false;
+        });
+      }
+    }
+  </script>
+</body>
+</html>
